@@ -1,6 +1,11 @@
 import os
+import sys
 from pathlib import Path
 import pytest
+
+# Ensure the current directory is in sys.path so TackOn can be imported
+sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
+
 import TackOn
 
 @pytest.fixture(autouse=True)
