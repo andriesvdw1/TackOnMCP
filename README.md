@@ -52,3 +52,16 @@ Changes the file extension of a `.txt` file to `.html` or `.md`.
 1. **Ensure dependencies are installed**:
    ```bash
    pip install mcp
+   ```
+
+## Running the Tests
+Install pytest (if you haven't already):
+
+```bash
+pip install pytest
+```
+Run the test suite:
+
+```bash
+pytest -v
+```
