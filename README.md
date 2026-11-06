@@ -63,5 +63,5 @@ pip install pytest
 Run the test suite:
 
 ```bash
-python -m pytest
+python -m pytest -v
 ```
