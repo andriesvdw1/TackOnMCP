@@ -1,142 +1,189 @@
-import os
+
+from pathlib import Path
 from mcp.server.fastmcp import FastMCP
 
-# Initialize the FastMCP server
+# Initialize FastMCP server
 mcp = FastMCP("TackOn File Management Server")
 
-# Define a secure workspace directory to prevent path traversal attacks
-BASE_DIR = os.path.abspath(os.getcwd())
+# Secure workspace directory
+BASE_DIR = Path.cwd().resolve()
 
-def _get_safe_path(filename: str) -> str:
-    """Resolve and validate that the path stays safely within the base directory."""
-    # Ensure default extension if none provided
-    if not filename.endswith((".txt", ".md", ".html")):
-        if not filename.endswith(".txt"):
-            filename += ".txt"
-    
-    path = os.path.abspath(os.path.join(BASE_DIR, filename))
-    
-    # Ensure the resolved path is strictly inside BASE_DIR
-    if os.path.commonpath([BASE_DIR, path]) != BASE_DIR:
-        raise ValueError("Security Error: Path traversal outside the working directory is not allowed.")
+ALLOWED_EXTENSIONS = {".txt", ".md", ".html"}
+
+
+def _get_safe_path(filename: str) -> Path:
+    """Resolve and validate a path inside the workspace."""
+
+    if not filename or not filename.strip():
+        raise ValueError("Filename cannot be empty.")
+
+    # Add .txt if the extension isn't supported
+    file_path = Path(filename)
+
+    if file_path.suffix.lower() not in ALLOWED_EXTENSIONS:
+        file_path = Path(str(file_path) + ".txt")
+
+    # Resolve absolute paths and symbolic links
+    path = (BASE_DIR / file_path).resolve()
+
+    # Prevent directory traversal
+    if not path.is_relative_to(BASE_DIR) or path == BASE_DIR:
+        raise ValueError(
+            "Security Error: Access outside the workspace is prohibited."
+        )
+
     return path
 
 
 @mcp.tool()
-def create_txt_file(filename: str, initial_content: str = "", overwrite: bool = False) -> str:
-    """Create a new file with a .txt extension and optional initial content.
+def create_txt_file(
+    filename: str,
+    initial_content: str = "",
+    overwrite: bool = False
+) -> str:
+    """Create a text, markdown or HTML file.
 
     Args:
-        filename: The name of the file (e.g., 'notes' or 'notes.txt').
-        initial_content: Optional text to write into the file initially.
-        overwrite: Whether to overwrite the file if it already exists.
+        filename: Filename, e.g. notes or notes.txt.
+        initial_content: Initial content to write.
+        overwrite: Allow replacing an existing file.
     """
     try:
         path = _get_safe_path(filename)
-        filename_only = os.path.basename(path)
-        
-        if os.path.exists(path) and not overwrite:
-            return f"Error: File '{filename_only}' already exists. Set overwrite=True to overwrite."
-        
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "w", encoding="utf-8") as f:
+
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Revalidate after creating directories
+        path = _get_safe_path(str(path))
+
+        mode = "w" if overwrite else "x"
+
+        with open(path, mode, encoding="utf-8") as f:
             f.write(initial_content)
-            
-        return f"Success: File '{filename_only}' was created successfully."
+
+        return f"Success: Created '{path.name}'."
+
+    except FileExistsError:
+        return f"Error: '{path.name}' already exists. Use overwrite=True."
+
     except Exception as e:
         return f"Error creating file: {str(e)}"
 
 
 @mcp.tool()
 def read_file(filename: str) -> str:
-    """Read and return the contents of a file in the workspace.
+    """Read the contents of a workspace file.
 
     Args:
-        filename: The name of the file to read.
+        filename: Name of the file to read.
     """
     try:
         path = _get_safe_path(filename)
-        filename_only = os.path.basename(path)
-        
-        if not os.path.exists(path):
-            return f"Error: File '{filename_only}' does not exist."
-            
+
+        if not path.is_file():
+            return f"Error: File '{path.name}' does not exist."
+
         with open(path, "r", encoding="utf-8") as f:
             return f.read()
+
     except Exception as e:
         return f"Error reading file: {str(e)}"
 
 
 @mcp.tool()
 def append_to_txt_file(filename: str, line: str) -> str:
-    """Append a line of text to an existing .txt file.
+    """Append text to an existing file.
 
     Args:
-        filename: The name of the file to append to.
-        line: The line of text to append.
+        filename: File to append to.
+        line: Text to append.
     """
     try:
         path = _get_safe_path(filename)
-        filename_only = os.path.basename(path)
-        
-        if not os.path.exists(path):
-            return f"Error: File '{filename_only}' does not exist. Please create it first."
-        
+
+        if not path.is_file():
+            return f"Error: File '{path.name}' does not exist."
+
         with open(path, "a", encoding="utf-8") as f:
             f.write(line + "\n")
-        return f"Success: Line appended to '{filename_only}'."
+
+        return f"Success: Text appended to '{path.name}'."
+
     except Exception as e:
         return f"Error appending to file: {str(e)}"
 
 
 @mcp.tool()
 def list_files() -> str:
-    """List all managed text, markdown, and html files in the workspace directory."""
+    """List managed files in the workspace root directory."""
     try:
         files = []
-        for entry in os.listdir(BASE_DIR):
-            full_path = os.path.join(BASE_DIR, entry)
-            if os.path.isfile(full_path) and entry.lower().endswith((".txt", ".md", ".html")):
-                files.append(entry)
-                
+
+        for entry in BASE_DIR.iterdir():
+            if (
+                entry.is_file()
+                and not entry.is_symlink()
+                and entry.suffix.lower() in ALLOWED_EXTENSIONS
+            ):
+                files.append(entry.name)
+
         if not files:
             return "No managed files found in the workspace."
-        return "Workspace files:\n" + "\n".join(f"- {f}" for f in files)
+
+        return "Workspace files:\n" + "\n".join(
+            f"- {name}" for name in sorted(files)
+        )
+
     except Exception as e:
         return f"Error listing files: {str(e)}"
 
 
 @mcp.tool()
-def change_file_extension(filename: str, new_extension: str) -> str:
-    """Change the file extension of a given file to either .html or .md.
+def change_file_extension(
+    filename: str,
+    new_extension: str
+) -> str:
+    """Change a file extension to .html or .md.
 
     Args:
-        filename: The current filename.
-        new_extension: The target extension, either '.html' or '.md' (or 'html' / 'md').
+        filename: Existing filename.
+        new_extension: Target extension (.html or .md).
     """
+    new_extension = new_extension.strip().lower()
+
     if not new_extension.startswith("."):
         new_extension = "." + new_extension
 
-    if new_extension not in [".html", ".md"]:
-        return "Error: Invalid extension. Allowed target extensions are '.html' or '.md'."
+    if new_extension not in {".html", ".md"}:
+        return "Error: Allowed extensions are .html and .md."
 
     try:
         path = _get_safe_path(filename)
-        filename_only = os.path.basename(path)
-        
-        if not os.path.exists(path):
-            return f"Error: File '{filename_only}' does not exist."
 
-        base_name, _ = os.path.splitext(path)
-        new_path = base_name + new_extension
-        new_filename_only = os.path.basename(new_path)
-        
-        os.rename(path, new_path)
-        return f"Success: Changed file extension from '{filename_only}' to '{new_filename_only}'."
+        if not path.is_file():
+            return f"Error: File '{path.name}' does not exist."
+
+        new_path = path.with_suffix(new_extension)
+
+        if new_path == path:
+            return "The file already has that extension."
+
+        if new_path.exists():
+            return f"Error: Destination '{new_path.name}' already exists."
+
+        new_path = _get_safe_path(str(new_path))
+
+        path.rename(new_path)
+
+        return (
+            f"Success: Changed '{path.name}' "
+            f"to '{new_path.name}'."
+        )
+
     except Exception as e:
         return f"Error renaming file: {str(e)}"
 
 
 if __name__ == "__main__":
-    # Run the server using stdio transport for MCP clients
+    # Start MCP server using stdio transport
     mcp.run()
