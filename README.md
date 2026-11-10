@@ -225,7 +225,3 @@ TackOnMCP/
 │
 └── .venv/
 ```
-
-## License
-
-Specify your preferred open-source license here before distributing the project.
