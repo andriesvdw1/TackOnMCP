@@ -1,6 +1,24 @@
 
 {
   "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "lmstudio": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "LM Studio Local",
+      "options": {
+        "baseURL": "http://127.0.0.1:1234/v1"
+      },
+      "models": {
+        "YOUR_MODEL_ID": {
+          "name": "Qwen3.5-4B",
+          "limit": {
+            "context": 4096,
+            "output": 1024
+          }
+        }
+      }
+    }
+  },
   "mcp": {
     "tackon": {
       "type": "local",
@@ -12,9 +30,7 @@
         "python",
         "C:\\Users\\Admin\\Desktop\\TackOnMCP\\TackOn.py"
       ],
-      "cwd": "C:\\Users\\Admin\\Desktop\\TackOnMCP",
-      "enabled": true,
-      "timeout": 30000
+      "enabled": true
     }
   }
 }
